@@ -1,4 +1,4 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult, EventMessageType
+from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 
@@ -29,7 +29,7 @@ class MyPlugin(Star):
         yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
 
     # 新增关键字识别功能
-    @filter.event_message_type(EventMessageType.MESSAGE)  # 监听所有消息事件
+    @filter.event_message_type("message")  # 监听所有消息事件
     async def keyword_handler(self, event: AstrMessageEvent):
         """关键字识别处理器"""
         message_str = event.get_message_str().strip()  # 获取用户发送的消息并去除首尾空格
