@@ -3,6 +3,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import aiohttp
 import json
+import re
 
 @register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
 class MyPlugin(Star):
@@ -32,16 +33,21 @@ class MyPlugin(Star):
 
     # 搜索功能：当消息以"搜"开头时触发
     @filter.regex(r"^搜(.+)")  
-    async def search_handler(self, event: AstrMessageEvent, match):
+    async def search_handler(self, event: AstrMessageEvent):
         """搜索处理器"""
-        # 提取搜索关键字
-        keyword = match.group(1).strip()
-        if keyword:
-            # 调用搜索接口
-            result = await self.search_resources(keyword)
-            yield event.plain_result(result)
+        message_str = event.get_message_str().strip()
+        # 使用正则表达式提取搜索关键字
+        match = re.match(r"^搜(.+)", message_str)
+        if match:
+            keyword = match.group(1).strip()
+            if keyword:
+                # 调用搜索接口
+                result = await self.search_resources(keyword)
+                yield event.plain_result(result)
+            else:
+                yield event.plain_result("请输入要搜索的关键词，例如：搜电影")
         else:
-            yield event.plain_result("请输入要搜索的关键词，例如：搜电影")
+            yield event.plain_result("搜索格式不正确，请使用：搜+关键词")
 
     # 关键字回复功能：匹配除搜索外的其他消息
     @filter.regex(r"^(?!搜).*$")  # 使用负向先行断言，匹配不以"搜"开头的消息
