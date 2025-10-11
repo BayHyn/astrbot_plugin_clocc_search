@@ -1,4 +1,4 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult, EventMessageType
+from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 import aiohttp
@@ -31,20 +31,23 @@ class MyPlugin(Star):
         yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
 
     # 新增关键字识别功能
-    @filter.event_message_type(EventMessageType.MESSAGE)  # 监听所有消息事件
+    @filter.regex(r'^搜(.+)')  # 使用正则表达式匹配以"搜"开头的消息
+    async def search_handler(self, event: AstrMessageEvent, match):
+        """搜索处理器"""
+        # 提取搜索关键字
+        keyword = match.group(1).strip()
+        if keyword:
+            # 调用搜索接口
+            result = await self.search_resources(keyword)
+            yield event.plain_result(result)
+        else:
+            yield event.plain_result("请输入要搜索的关键词，例如：搜电影")
+
+    # 关键字回复功能
+    @filter.event_message_type("message")  # 监听所有消息事件
     async def keyword_handler(self, event: AstrMessageEvent):
         """关键字识别处理器"""
         message_str = event.get_message_str().strip()  # 获取用户发送的消息并去除首尾空格
-        
-        # 检查是否以"搜"开头
-        if message_str.startswith("搜") and len(message_str) > 1:
-            # 提取搜索关键字
-            keyword = message_str[1:].strip()
-            if keyword:
-                # 调用搜索接口
-                result = await self.search_resources(keyword)
-                yield event.plain_result(result)
-                return
         
         # 检查是否包含预定义的关键字
         for keyword, response in self.keyword_responses.items():
@@ -52,9 +55,6 @@ class MyPlugin(Star):
                 logger.info(f"匹配到关键字: {keyword}, 发送回复: {response}")
                 yield event.plain_result(response)
                 return  # 找到匹配的关键字后立即返回，避免重复回复
-        
-        # 如果没有匹配的关键字，可以不回复或发送默认消息
-        # yield event.plain_result("抱歉，我没有理解你的意思。发送'帮助'查看可用关键字。")
 
     async def search_resources(self, keyword: str) -> str:
         """调用搜索接口并返回结果"""
