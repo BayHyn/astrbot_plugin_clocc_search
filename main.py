@@ -113,21 +113,34 @@ class MyPlugin(Star):
         try:
             logger.info(f"开始格式化搜索结果: {data}")
             
-            if not data or "data" not in data:
+            # 检查数据结构
+            if not data or "merged_by_type" not in data:
                 return "未找到相关资源。"
             
-            results = data["data"]
-            if not results:
+            # 合并所有平台的结果
+            all_results = []
+            merged_data = data.get("merged_by_type", {})
+            
+            # 从百度网盘和夸克网盘中提取结果
+            for platform_results in merged_data.values():
+                all_results.extend(platform_results)
+            
+            if not all_results:
                 return "未找到相关资源。"
             
             # 最多返回10条数据
-            results = results[:10]
+            results = all_results[:10]
             
             formatted_results = ["搜索结果:"]
             for i, item in enumerate(results, 1):
-                title = item.get("title", "未知标题")
+                title = item.get("note", "未知标题")
                 url = item.get("url", "未知链接")
-                formatted_results.append(f"{i}. {title}\n链接: {url}")
+                password = item.get("password", "")
+                
+                if password:
+                    formatted_results.append(f"{i}. {title}\n链接: {url}\n密码: {password}")
+                else:
+                    formatted_results.append(f"{i}. {title}\n链接: {url}")
             
             return "\n\n".join(formatted_results)
         except Exception as e:
