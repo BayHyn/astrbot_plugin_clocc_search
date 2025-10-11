@@ -67,13 +67,25 @@ class MyPlugin(Star):
         url = f"https://pansd.xyz/api/search?kw={keyword}&src=all&cloud_types=baidu%2Cquark"
         
         try:
-            async with aiohttp.ClientSession() as session:
+            # 添加更多调试信息
+            logger.info(f"正在调用搜索接口: {url}")
+            
+            timeout = aiohttp.ClientTimeout(total=30)  # 设置30秒超时
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(url) as response:
                     if response.status == 200:
                         data = await response.json()
                         return self.format_search_results(data)
                     else:
+                        error_text = await response.text()
+                        logger.error(f"搜索接口返回错误，状态码: {response.status}, 响应内容: {error_text}")
                         return f"搜索失败，HTTP状态码: {response.status}"
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"网络连接错误: {str(e)}")
+            return "搜索失败：无法连接到搜索服务器，请检查网络连接"
+        except aiohttp.ClientError as e:
+            logger.error(f"HTTP客户端错误: {str(e)}")
+            return f"搜索失败：网络请求错误 {str(e)}"
         except Exception as e:
             logger.error(f"搜索接口调用失败: {str(e)}")
             return f"搜索失败: {str(e)}"
