@@ -86,8 +86,20 @@ class MyPlugin(Star):
                         else:
                             # 转换失败，提示链接已失效
                             yield event.plain_result("❌ 抱歉，该分享链接已失效，请尝试获取其他资源 (；′⌒`)")
+                    # 如果是夸克网盘，调用夸克转换接口
+                    elif item.get("type") == "quark":
+                        yield event.plain_result("🔄 正在获取资源，请稍后...预计需要10秒左右 (´∀｀)♡")
+                        converted_url = await self.convert_quark_link(url)
+                        if converted_url:
+                            # 转换成功，使用新链接
+                            url = converted_url
+                            result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
+                            yield event.plain_result(result)
+                        else:
+                            # 转换失败，提示链接已失效
+                            yield event.plain_result("❌ 抱歉，该分享链接已失效，请尝试获取其他资源 (；′⌒`)")
                     else:
-                        # 夸克网盘直接显示详情
+                        # 其他类型直接显示详情
                         result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
                         if password:
                             result += f"\n🔑 密码: {password}"
@@ -256,6 +268,58 @@ class MyPlugin(Star):
             return None
         except Exception as e:
             logger.error(f"转换接口调用失败: {e}")
+            return None
+
+    async def convert_quark_link(self, original_url: str) -> Optional[str]:
+        """转换夸克网盘链接"""
+        convert_url = "https://pansd.xyz/api/quark-transfer-and-share"
+        
+        # 准备请求参数
+        data = {
+            "share_url": original_url,
+            "target_dir": "/pansou_downloads"
+        }
+        
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "AstrBot-Search-Plugin/1.0"
+        }
+        
+        try:
+            logger.info(f"正在转换夸克网盘链接: {original_url}")
+            
+            # 设置超时时间
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(convert_url, headers=headers, json=data) as response:
+                    logger.info(f"夸克转换接口响应状态码: {response.status}")
+                    
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.info(f"夸克转换接口响应数据: {result}")
+                        
+                        if result.get("code") == 200 and result.get("data", {}).get("success"):
+                            converted_url = result.get("data", {}).get("share_link", original_url)
+                            return converted_url
+                        else:
+                            error_msg = result.get("data", {}).get("message", "转换失败")
+                            logger.error(f"夸克链接转换失败: {error_msg}")
+                            return None
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"夸克转换接口请求失败，状态码: {response.status}, 响应内容: {error_text}")
+                        return None
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"夸克转换接口网络连接错误: {e}")
+            return None
+        except aiohttp.ClientError as e:
+            logger.error(f"夸克转换接口HTTP客户端错误: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"夸克转换接口JSON解析错误: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"夸克转换接口调用失败: {e}")
             return None
 
     def format_search_results(self, data: dict, keyword: str, user_id: str) -> str:
