@@ -16,6 +16,12 @@
 3. 输入编号获取详细信息（链接和密码）
 4. 如有分页，可发送 `/下一页` 或 `/上一页` 进行翻页
 
+## 演示截图
+
+![搜索结果展示](https://imgloc.com/image/7WprWx)
+
+![资源详情展示](https://imgloc.com/image/7WpfVL)
+
 ## 安装
 
 将本插件文件夹放入 AstrBot 的 plugins 目录中即可。
