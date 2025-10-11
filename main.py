@@ -63,12 +63,20 @@ class MyPlugin(Star):
                 actual_index = (current_page - 1) * per_page + index
                 
                 if 1 <= actual_index <= len(search_results):
-                    # 返回对应编号的详细信息
+                    # 获取对应编号的详细信息
                     item = search_results[actual_index - 1]
                     title = item.get("note", "未知标题")
                     url = item.get("url", "未知链接")
                     password = item.get("password", "")
                     source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
+                    
+                    # 如果是百度网盘，先调用转换接口
+                    if item.get("type") == "baidu":
+                        yield event.plain_result("正在转换百度网盘链接，请稍后...")
+                        converted_url, converted_password = await self.convert_baidu_link(url, password)
+                        if converted_url:
+                            url = converted_url
+                            password = converted_password
                     
                     result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
                     if password:
@@ -184,6 +192,61 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"搜索接口调用失败: {e}")
             return f"搜索失败: {e}"
+
+    async def convert_baidu_link(self, original_url: str, password: str) -> tuple:
+        """转换百度网盘链接"""
+        convert_url = "http://103.109.22.15:5003/api/key/transfer-and-share"
+        api_key = "oPhbkFvdYnuKxMOCsei7gLHVSoQ5cnmj1MCSNiir35s"
+        
+        headers = {
+            "X-API-Key": api_key,
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "share_url": original_url,
+            "save_dir": "/pansou_downloads",
+            "share_password": password,
+            "share_period": 0
+        }
+        
+        try:
+            logger.info(f"正在转换百度网盘链接: {original_url}")
+            
+            # 设置超时时间
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(convert_url, headers=headers, json=data) as response:
+                    logger.info(f"转换接口响应状态码: {response.status}")
+                    
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.info(f"转换接口响应数据: {result}")
+                        
+                        if result.get("success"):
+                            share_info = result.get("share_info", {})
+                            converted_url = share_info.get("url", original_url)
+                            converted_password = share_info.get("password", password)
+                            return converted_url, converted_password
+                        else:
+                            logger.error(f"转换失败: {result.get('message')}")
+                            return original_url, password
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"转换接口请求失败，状态码: {response.status}, 响应内容: {error_text}")
+                        return original_url, password
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"转换接口网络连接错误: {e}")
+            return original_url, password
+        except aiohttp.ClientError as e:
+            logger.error(f"转换接口HTTP客户端错误: {e}")
+            return original_url, password
+        except json.JSONDecodeError as e:
+            logger.error(f"转换接口JSON解析错误: {e}")
+            return original_url, password
+        except Exception as e:
+            logger.error(f"转换接口调用失败: {e}")
+            return original_url, password
 
     def format_search_results(self, data: dict, keyword: str, user_id: str) -> str:
         """格式化搜索结果"""
