@@ -201,18 +201,8 @@ class MyPlugin(Star):
             if not baidu_results and not quark_results:
                 return "未找到相关资源。"
             
-            # 平均展示百度网盘和夸克网盘的结果
-            all_results = []
-            
-            # 轮流添加百度和夸克的结果，确保平均展示
-            max_len = max(len(baidu_results), len(quark_results))
-            for i in range(max_len):
-                # 添加百度网盘结果
-                if i < len(baidu_results):
-                    all_results.append(baidu_results[i])
-                # 添加夸克网盘结果
-                if i < len(quark_results):
-                    all_results.append(quark_results[i])
+            # 按照网盘类型分组展示（先5条百度，再5条夸克）
+            all_results = self.group_results_by_type(baidu_results, quark_results)
             
             # 将搜索结果存储在用户缓存中
             self.user_search_results[user_id] = all_results
@@ -225,6 +215,80 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"格式化搜索结果失败: {e}")
             return f"结果格式化失败: {e}"
+
+    def group_results_by_type(self, baidu_results: list, quark_results: list) -> list:
+        """按照网盘类型分组展示结果（先5条百度，再5条夸克）"""
+        # 创建一个新的列表来存储分组后的结果
+        grouped_results = []
+        
+        # 先添加百度网盘的结果（最多5条）
+        baidu_count = min(len(baidu_results), 5)
+        for i in range(baidu_count):
+            baidu_results[i]["type"] = "baidu"  # 确保有type字段
+            grouped_results.append(baidu_results[i])
+        
+        # 再添加夸克网盘的结果（最多5条）
+        quark_count = min(len(quark_results), 5)
+        for i in range(quark_count):
+            quark_results[i]["type"] = "quark"  # 确保有type字段
+            grouped_results.append(quark_results[i])
+        
+        # 如果某种类型的结果不足5条，用另一种类型的结果补充
+        total_added = len(grouped_results)
+        if total_added < 10:
+            remaining_slots = 10 - total_added
+            # 补充百度网盘结果
+            if len(baidu_results) > baidu_count:
+                for i in range(baidu_count, min(baidu_count + remaining_slots, len(baidu_results))):
+                    baidu_results[i]["type"] = "baidu"
+                    grouped_results.append(baidu_results[i])
+                    remaining_slots -= 1
+                    if remaining_slots <= 0:
+                        break
+            # 补充夸克网盘结果
+            if remaining_slots > 0 and len(quark_results) > quark_count:
+                for i in range(quark_count, min(quark_count + remaining_slots, len(quark_results))):
+                    quark_results[i]["type"] = "quark"
+                    grouped_results.append(quark_results[i])
+                    remaining_slots -= 1
+                    if remaining_slots <= 0:
+                        break
+        
+        # 继续添加剩余的结果，保持分组模式（5个百度，5个夸克）
+        baidu_index = max(baidu_count, 5)
+        quark_index = max(quark_count, 5)
+        
+        while baidu_index < len(baidu_results) or quark_index < len(quark_results):
+            # 添加下一组百度网盘结果（最多5条）
+            baidu_added = 0
+            while baidu_added < 5 and baidu_index < len(baidu_results):
+                baidu_results[baidu_index]["type"] = "baidu"
+                grouped_results.append(baidu_results[baidu_index])
+                baidu_index += 1
+                baidu_added += 1
+            
+            # 添加下一组夸克网盘结果（最多5条）
+            quark_added = 0
+            while quark_added < 5 and quark_index < len(quark_results):
+                quark_results[quark_index]["type"] = "quark"
+                grouped_results.append(quark_results[quark_index])
+                quark_index += 1
+                quark_added += 1
+            
+            # 如果其中一种类型已经没有结果了，继续添加另一种类型的剩余结果
+            if baidu_index >= len(baidu_results):
+                while quark_index < len(quark_results):
+                    quark_results[quark_index]["type"] = "quark"
+                    grouped_results.append(quark_results[quark_index])
+                    quark_index += 1
+            
+            if quark_index >= len(quark_results):
+                while baidu_index < len(baidu_results):
+                    baidu_results[baidu_index]["type"] = "baidu"
+                    grouped_results.append(baidu_results[baidu_index])
+                    baidu_index += 1
+        
+        return grouped_results
 
     def format_paginated_results(self, user_id: str, all_results: list, pagination: dict) -> str:
         """格式化分页结果"""
@@ -240,6 +304,18 @@ class MyPlugin(Star):
         
         # 格式化结果
         formatted_results = [f"搜索结果 (第 {page} 页)："]
+        baidu_count = 0
+        quark_count = 0
+        
+        # 统计当前页中各类型资源的数量
+        for item in page_results:
+            if item.get("type") == "baidu":
+                baidu_count += 1
+            elif item.get("type") == "quark":
+                quark_count += 1
+        
+        formatted_results.append(f"[百度网盘: {baidu_count}条, 夸克网盘: {quark_count}条]")
+        
         for i, item in enumerate(page_results, 1):
             title = item.get("note", "未知标题")
             source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
