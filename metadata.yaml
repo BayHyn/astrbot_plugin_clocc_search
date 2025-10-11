@@ -1,5 +1,5 @@
-name: astrbot_plugin_clocc_search # 这是你的插件的唯一识别名。
-desc: 这是 Clocc的自动回复插件，支持关键词自动回复和资源搜索功能。发送以"搜"开头的消息（如"搜关键词"）即可搜索资源。 # 插件简短描述
-version: v1.2 # 插件版本号。格式：v1.1.1 或者 v1.1
-author: Clocc # 作者
-repo: https://github.com/Clocc/astrbot_plugin_clocc_search # 插件的仓库地址
+name: astrbot_plugin_clocc_search
+desc: Clocc资源搜索插件，支持关键词自动回复和资源搜索功能。发送以"搜"开头的消息（如"搜关键词"）即可搜索资源。
+version: v1.3
+author: YourName
+repo: https://github.com/Clocc/astrbot_plugin_clocc_search
