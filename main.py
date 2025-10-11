@@ -66,33 +66,53 @@ class MyPlugin(Star):
         """调用搜索接口并返回结果"""
         url = f"https://pansd.xyz/api/search?kw={keyword}&src=all&cloud_types=baidu%2Cquark"
         
+        # 准备请求参数
+        params = {
+            "kw": keyword,
+            "src": "all",
+            "cloud_types": "baidu,quark"
+        }
+        
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "AstrBot-Search-Plugin/1.0"
+        }
+        
         try:
-            # 添加更多调试信息
             logger.info(f"正在调用搜索接口: {url}")
             
-            timeout = aiohttp.ClientTimeout(total=30)  # 设置30秒超时
+            # 设置超时时间
+            timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
+                async with session.get(url, params=params, headers=headers) as response:
+                    logger.info(f"搜索接口响应状态码: {response.status}")
+                    
                     if response.status == 200:
                         data = await response.json()
+                        logger.info(f"搜索接口响应数据: {data}")
                         return self.format_search_results(data)
                     else:
                         error_text = await response.text()
-                        logger.error(f"搜索接口返回错误，状态码: {response.status}, 响应内容: {error_text}")
+                        logger.error(f"搜索接口请求失败，状态码: {response.status}, 响应内容: {error_text}")
                         return f"搜索失败，HTTP状态码: {response.status}"
         except aiohttp.ClientConnectorError as e:
-            logger.error(f"网络连接错误: {str(e)}")
+            logger.error(f"网络连接错误: {e}")
             return "搜索失败：无法连接到搜索服务器，请检查网络连接"
         except aiohttp.ClientError as e:
-            logger.error(f"HTTP客户端错误: {str(e)}")
-            return f"搜索失败：网络请求错误 {str(e)}"
+            logger.error(f"HTTP客户端错误: {e}")
+            return f"搜索失败：网络请求错误 {e}"
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON解析错误: {e}")
+            return f"搜索失败：返回数据格式错误 {e}"
         except Exception as e:
-            logger.error(f"搜索接口调用失败: {str(e)}")
-            return f"搜索失败: {str(e)}"
+            logger.error(f"搜索接口调用失败: {e}")
+            return f"搜索失败: {e}"
 
     def format_search_results(self, data: dict) -> str:
         """格式化搜索结果"""
         try:
+            logger.info(f"开始格式化搜索结果: {data}")
+            
             if not data or "data" not in data:
                 return "未找到相关资源。"
             
@@ -111,8 +131,8 @@ class MyPlugin(Star):
             
             return "\n\n".join(formatted_results)
         except Exception as e:
-            logger.error(f"格式化搜索结果失败: {str(e)}")
-            return f"结果格式化失败: {str(e)}"
+            logger.error(f"格式化搜索结果失败: {e}")
+            return f"结果格式化失败: {e}"
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
