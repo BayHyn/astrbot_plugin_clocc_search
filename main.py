@@ -41,6 +41,9 @@ class MyPlugin(Star):
         if match:
             keyword = match.group(1).strip()
             if keyword:
+                # 先发送正在搜索的提示消息
+                yield event.plain_result("正在搜索，请稍后...")
+                
                 # 调用搜索接口
                 result = await self.search_resources(keyword)
                 yield event.plain_result(result)
@@ -90,7 +93,7 @@ class MyPlugin(Star):
                     if response.status == 200:
                         data = await response.json()
                         logger.info(f"搜索接口响应数据: {data}")
-                        return self.format_search_results(data)
+                        return self.format_search_results(data, keyword)
                     else:
                         error_text = await response.text()
                         logger.error(f"搜索接口请求失败，状态码: {response.status}, 响应内容: {error_text}")
@@ -108,7 +111,7 @@ class MyPlugin(Star):
             logger.error(f"搜索接口调用失败: {e}")
             return f"搜索失败: {e}"
 
-    def format_search_results(self, data: dict) -> str:
+    def format_search_results(self, data: dict, keyword: str) -> str:
         """格式化搜索结果"""
         try:
             logger.info(f"开始格式化搜索结果: {data}")
@@ -117,30 +120,59 @@ class MyPlugin(Star):
             if not data or "merged_by_type" not in data:
                 return "未找到相关资源。"
             
-            # 合并所有平台的结果
-            all_results = []
+            # 获取总结果数
+            total_count = data.get("total", 0)
+            
+            # 分别获取百度网盘和夸克网盘的结果
             merged_data = data.get("merged_by_type", {})
+            baidu_results = merged_data.get("baidu", [])
+            quark_results = merged_data.get("quark", [])
             
-            # 从百度网盘和夸克网盘中提取结果
-            for platform_results in merged_data.values():
-                all_results.extend(platform_results)
-            
-            if not all_results:
+            if not baidu_results and not quark_results:
                 return "未找到相关资源。"
             
-            # 最多返回10条数据
-            results = all_results[:10]
+            # 平均展示百度网盘和夸克网盘的结果
+            all_results = []
+            max_results = min(10, max(len(baidu_results), len(quark_results)))
             
-            formatted_results = ["搜索结果:"]
-            for i, item in enumerate(results, 1):
+            # 轮流添加百度和夸克的结果，确保平均展示
+            for i in range(max_results):
+                # 添加百度网盘结果
+                if i < len(baidu_results):
+                    all_results.append(baidu_results[i])
+                # 添加夸克网盘结果
+                if i < len(quark_results):
+                    all_results.append(quark_results[i])
+            
+            # 如果还有空间，继续添加剩余结果，最多10条
+            i = 0
+            while len(all_results) < 10 and (i < len(baidu_results) or i < len(quark_results)):
+                if i < len(baidu_results) and baidu_results[i] not in all_results:
+                    all_results.append(baidu_results[i])
+                if i < len(quark_results) and quark_results[i] not in all_results:
+                    all_results.append(quark_results[i])
+                i += 1
+            
+            # 最多只展示10条
+            all_results = all_results[:10]
+            
+            # 格式化结果
+            formatted_results = [f"搜索结果 (关键词: {keyword}):"]
+            for i, item in enumerate(all_results, 1):
                 title = item.get("note", "未知标题")
                 url = item.get("url", "未知链接")
                 password = item.get("password", "")
+                source = "百度网盘" if "baidu.com" in url else "夸克网盘"
                 
                 if password:
-                    formatted_results.append(f"{i}. {title}\n链接: {url}\n密码: {password}")
+                    formatted_results.append(f"{i}. {title}\n   来源: {source}\n   链接: {url}\n   密码: {password}")
                 else:
-                    formatted_results.append(f"{i}. {title}\n链接: {url}")
+                    formatted_results.append(f"{i}. {title}\n   来源: {source}\n   链接: {url}")
+            
+            # 添加结果统计信息
+            displayed_count = len(all_results)
+            formatted_results.append(f"\n📊 共搜索到 {total_count} 条数据，当前展示 {displayed_count} 条")
+            formatted_results.append("如需查看更多结果，请复制 https://pansd.xyz 到浏览器查看。")
             
             return "\n\n".join(formatted_results)
         except Exception as e:
