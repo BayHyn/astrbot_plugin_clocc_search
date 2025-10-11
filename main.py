@@ -30,8 +30,8 @@ class MyPlugin(Star):
         logger.info(message_chain)
         yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!") # 发送一条纯文本消息
 
-    # 新增关键字识别功能
-    @filter.regex(r'^搜(.+)')  # 使用正则表达式匹配以"搜"开头的消息
+    # 搜索功能：当消息以"搜"开头时触发
+    @filter.regex(r"^搜(.+)")  
     async def search_handler(self, event: AstrMessageEvent, match):
         """搜索处理器"""
         # 提取搜索关键字
@@ -44,17 +44,18 @@ class MyPlugin(Star):
             yield event.plain_result("请输入要搜索的关键词，例如：搜电影")
 
     # 关键字回复功能
-    @filter.event_message_type("message")  # 监听所有消息事件
+    @filter.regex(r".*")  # 匹配所有消息
     async def keyword_handler(self, event: AstrMessageEvent):
         """关键字识别处理器"""
         message_str = event.get_message_str().strip()  # 获取用户发送的消息并去除首尾空格
         
-        # 检查是否包含预定义的关键字
-        for keyword, response in self.keyword_responses.items():
-            if keyword in message_str:
-                logger.info(f"匹配到关键字: {keyword}, 发送回复: {response}")
-                yield event.plain_result(response)
-                return  # 找到匹配的关键字后立即返回，避免重复回复
+        # 检查是否包含预定义的关键字（但不包括以"搜"开头的消息）
+        if not message_str.startswith("搜"):
+            for keyword, response in self.keyword_responses.items():
+                if keyword in message_str:
+                    logger.info(f"匹配到关键字: {keyword}, 发送回复: {response}")
+                    yield event.plain_result(response)
+                    return  # 找到匹配的关键字后立即返回，避免重复回复
 
     async def search_resources(self, keyword: str) -> str:
         """调用搜索接口并返回结果"""
