@@ -73,7 +73,7 @@ class MyPlugin(Star):
                     
                     # 如果是百度网盘，先调用转换接口
                     if item.get("type") == "baidu":
-                        yield event.plain_result("🔄 正在获取资源，请稍后...预计需要10秒左右 (´∀｀)♡")
+                        yield event.plain_result("🔄 正在努力加载资源，请稍后... (´∀｀)♡")
                         converted_result = await self.convert_baidu_link(url)
                         if converted_result:
                             # 转换成功，使用新链接
@@ -88,7 +88,7 @@ class MyPlugin(Star):
                             yield event.plain_result("❌ 抱歉，该分享链接已失效，请尝试获取其他资源 (；′⌒`)")
                     # 如果是夸克网盘，调用夸克转换接口
                     elif item.get("type") == "quark":
-                        yield event.plain_result("🔄 正在获取资源，请稍后...预计需要10秒左右 (´∀｀)♡")
+                        yield event.plain_result("🔄 正在努力加载资源，请稍后... (´∀｀)♡")
                         converted_url = await self.convert_quark_link(url)
                         if converted_url:
                             # 转换成功，使用新链接
