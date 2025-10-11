@@ -1,0 +1,23 @@
+#!/bin/bash
+# 插件功能测试脚本
+
+echo "=== AstrBot 插件测试脚本 ==="
+echo "请在 AstrBot 中发送以下消息来测试插件功能："
+echo ""
+echo "1. 测试基础指令功能："
+echo "   发送：/helloworld"
+echo ""
+echo "2. 测试关键字回复功能："
+echo "   发送：你好"
+echo "   发送：hello"
+echo "   发送：帮助"
+echo ""
+echo "3. 测试搜索功能："
+echo "   发送：搜朝雪录"
+echo "   发送：搜电影"
+echo "   发送：搜学习资料"
+echo ""
+echo "4. 测试错误处理："
+echo "   发送：搜（不带关键词）"
+echo ""
+echo "请在 AstrBot 的聊天界面中发送以上消息，并观察插件的回复。"
