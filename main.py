@@ -11,6 +11,8 @@ class MyPlugin(Star):
         super().__init__(context)
         # 存储用户的搜索结果，用于交互式查询
         self.user_search_results = {}
+        # 存储用户的分页信息
+        self.user_pagination = {}
 
     async def initialize(self):
         """插件初始化"""
@@ -51,10 +53,17 @@ class MyPlugin(Star):
             try:
                 index = int(message_str)
                 search_results = self.user_search_results[user_id]
+                # 获取当前页码信息
+                pagination = self.user_pagination.get(user_id, {"page": 1, "per_page": 10})
+                current_page = pagination["page"]
+                per_page = pagination["per_page"]
                 
-                if 1 <= index <= len(search_results):
+                # 计算实际索引（考虑分页）
+                actual_index = (current_page - 1) * per_page + index
+                
+                if 1 <= actual_index <= len(search_results):
                     # 返回对应编号的详细信息
-                    item = search_results[index - 1]
+                    item = search_results[actual_index - 1]
                     title = item.get("note", "未知标题")
                     url = item.get("url", "未知链接")
                     password = item.get("password", "")
@@ -64,16 +73,70 @@ class MyPlugin(Star):
                     if password:
                         result += f"\n密码: {password}"
                     
-                    # 清除用户的搜索结果缓存
-                    del self.user_search_results[user_id]
                     yield event.plain_result(result)
                 else:
-                    yield event.plain_result(f"请输入有效的编号 (1-{len(search_results)})")
+                    yield event.plain_result(f"请输入有效的编号 (1-{min(per_page, len(search_results) - (current_page-1) * per_page)})")
             except ValueError:
                 yield event.plain_result("请输入有效的数字编号")
         else:
             # 如果用户没有待处理的搜索结果，则不处理数字消息
             pass
+
+    # 处理下一页指令
+    @filter.command("下一页")
+    async def next_page_handler(self, event: AstrMessageEvent):
+        """处理下一页指令"""
+        user_id = event.get_sender_id()
+        
+        # 检查用户是否有待处理的搜索结果
+        if user_id in self.user_search_results and self.user_search_results[user_id]:
+            # 获取分页信息
+            if user_id not in self.user_pagination:
+                self.user_pagination[user_id] = {"page": 1, "per_page": 10}
+            
+            pagination = self.user_pagination[user_id]
+            current_page = pagination["page"]
+            per_page = pagination["per_page"]
+            search_results = self.user_search_results[user_id]
+            
+            # 计算总页数
+            total_pages = (len(search_results) + per_page - 1) // per_page
+            
+            if current_page < total_pages:
+                pagination["page"] = current_page + 1
+                # 显示新页面的结果
+                result = self.format_paginated_results(user_id, search_results, pagination)
+                yield event.plain_result(result)
+            else:
+                yield event.plain_result("已经是最后一页了")
+        else:
+            yield event.plain_result("没有搜索结果可以翻页")
+
+    # 处理上一页指令
+    @filter.command("上一页")
+    async def prev_page_handler(self, event: AstrMessageEvent):
+        """处理上一页指令"""
+        user_id = event.get_sender_id()
+        
+        # 检查用户是否有待处理的搜索结果
+        if user_id in self.user_search_results and self.user_search_results[user_id]:
+            # 获取分页信息
+            if user_id not in self.user_pagination:
+                self.user_pagination[user_id] = {"page": 1, "per_page": 10}
+            
+            pagination = self.user_pagination[user_id]
+            current_page = pagination["page"]
+            
+            if current_page > 1:
+                pagination["page"] = current_page - 1
+                # 显示新页面的结果
+                search_results = self.user_search_results[user_id]
+                result = self.format_paginated_results(user_id, search_results, pagination)
+                yield event.plain_result(result)
+            else:
+                yield event.plain_result("已经是第一页了")
+        else:
+            yield event.plain_result("没有搜索结果可以翻页")
 
     async def search_resources(self, keyword: str, user_id: str) -> str:
         """调用搜索接口并返回结果"""
@@ -151,26 +214,49 @@ class MyPlugin(Star):
                 if i < len(quark_results):
                     all_results.append(quark_results[i])
             
-            # 最多只展示10条
-            all_results = all_results[:10]
-            
             # 将搜索结果存储在用户缓存中
             self.user_search_results[user_id] = all_results
+            # 初始化分页信息
+            self.user_pagination[user_id] = {"page": 1, "per_page": 10}
             
-            # 只返回带编号的标题列表
-            formatted_results = [f"搜索结果 (关键词: {keyword}):"]
-            for i, item in enumerate(all_results, 1):
-                title = item.get("note", "未知标题")
-                source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
-                formatted_results.append(f"{i}. {title} [{source}]")
-            
-            # 添加交互提示
-            formatted_results.append("\n请输入编号查看详细信息（如：1）")
-            
-            return "\n".join(formatted_results)
+            # 返回第一页的结果
+            pagination = self.user_pagination[user_id]
+            return self.format_paginated_results(user_id, all_results, pagination)
         except Exception as e:
             logger.error(f"格式化搜索结果失败: {e}")
             return f"结果格式化失败: {e}"
+
+    def format_paginated_results(self, user_id: str, all_results: list, pagination: dict) -> str:
+        """格式化分页结果"""
+        page = pagination["page"]
+        per_page = pagination["per_page"]
+        
+        # 计算当前页的起始和结束索引
+        start_index = (page - 1) * per_page
+        end_index = min(start_index + per_page, len(all_results))
+        
+        # 获取当前页的结果
+        page_results = all_results[start_index:end_index]
+        
+        # 格式化结果
+        formatted_results = [f"搜索结果 (第 {page} 页)："]
+        for i, item in enumerate(page_results, 1):
+            title = item.get("note", "未知标题")
+            source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
+            formatted_results.append(f"{i}. {title} [{source}]")
+        
+        # 添加分页信息和交互提示
+        total_count = len(all_results)
+        total_pages = (total_count + per_page - 1) // per_page
+        formatted_results.append(f"\n📊 共 {total_count} 条结果，当前第 {page}/{total_pages} 页")
+        formatted_results.append("输入编号查看详细信息（如：1）")
+        
+        if page > 1:
+            formatted_results.append("发送 /上一页 查看前一页")
+        if page < total_pages:
+            formatted_results.append("发送 /下一页 查看下一页")
+        
+        return "\n".join(formatted_results)
 
     async def terminate(self):
         """插件销毁"""
