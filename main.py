@@ -1,6 +1,8 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult, EventMessageType
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
+import aiohttp
+import json
 
 @register("helloworld", "YourName", "一个简单的 Hello World 插件", "1.0.0")
 class MyPlugin(Star):
@@ -34,6 +36,16 @@ class MyPlugin(Star):
         """关键字识别处理器"""
         message_str = event.get_message_str().strip()  # 获取用户发送的消息并去除首尾空格
         
+        # 检查是否以"搜"开头
+        if message_str.startswith("搜") and len(message_str) > 1:
+            # 提取搜索关键字
+            keyword = message_str[1:].strip()
+            if keyword:
+                # 调用搜索接口
+                result = await self.search_resources(keyword)
+                yield event.plain_result(result)
+                return
+        
         # 检查是否包含预定义的关键字
         for keyword, response in self.keyword_responses.items():
             if keyword in message_str:
@@ -43,6 +55,46 @@ class MyPlugin(Star):
         
         # 如果没有匹配的关键字，可以不回复或发送默认消息
         # yield event.plain_result("抱歉，我没有理解你的意思。发送'帮助'查看可用关键字。")
+
+    async def search_resources(self, keyword: str) -> str:
+        """调用搜索接口并返回结果"""
+        url = f"https://pansd.xyz/api/search?kw={keyword}&src=all&cloud_types=baidu%2Cquark"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self.format_search_results(data)
+                    else:
+                        return f"搜索失败，HTTP状态码: {response.status}"
+        except Exception as e:
+            logger.error(f"搜索接口调用失败: {str(e)}")
+            return f"搜索失败: {str(e)}"
+
+    def format_search_results(self, data: dict) -> str:
+        """格式化搜索结果"""
+        try:
+            if not data or "data" not in data:
+                return "未找到相关资源。"
+            
+            results = data["data"]
+            if not results:
+                return "未找到相关资源。"
+            
+            # 最多返回10条数据
+            results = results[:10]
+            
+            formatted_results = ["搜索结果:"]
+            for i, item in enumerate(results, 1):
+                title = item.get("title", "未知标题")
+                url = item.get("url", "未知链接")
+                formatted_results.append(f"{i}. {title}\n链接: {url}")
+            
+            return "\n\n".join(formatted_results)
+        except Exception as e:
+            logger.error(f"格式化搜索结果失败: {str(e)}")
+            return f"结果格式化失败: {str(e)}"
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""
