@@ -44,7 +44,7 @@ class MyPlugin(Star):
             yield event.plain_result("请输入要搜索的关键词，例如：搜电影")
 
     # 关键字回复功能
-    @filter.regex(r".*")  # 匹配所有消息
+    @filter.event_message_type("message")  # 监听所有消息事件
     async def keyword_handler(self, event: AstrMessageEvent):
         """关键字识别处理器"""
         message_str = event.get_message_str().strip()  # 获取用户发送的消息并去除首尾空格
