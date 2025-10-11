@@ -41,17 +41,18 @@ class MyPlugin(Star):
         else:
             yield event.plain_result("搜索格式不正确，请使用：搜+关键词")
 
-    # 处理用户输入的编号
-    @filter.regex(r"^(\d+)$")  
+    # 处理用户输入的编号（获取详细信息）
+    @filter.regex(r"^获取(\d+)$")  
     async def number_handler(self, event: AstrMessageEvent):
         """处理用户输入的编号"""
         message_str = event.get_message_str().strip()
         user_id = event.get_sender_id()
         
-        # 检查用户是否有待处理的搜索结果
-        if user_id in self.user_search_results and self.user_search_results[user_id]:
+        # 使用正则表达式提取编号
+        match = re.match(r"^获取(\d+)$", message_str)
+        if match:
             try:
-                index = int(message_str)
+                index = int(match.group(1))
                 search_results = self.user_search_results[user_id]
                 # 获取当前页码信息
                 pagination = self.user_pagination.get(user_id, {"page": 1, "per_page": 10})
@@ -69,9 +70,9 @@ class MyPlugin(Star):
                     password = item.get("password", "")
                     source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
                     
-                    result = f"资源详情:\n标题: {title}\n来源: {source}\n链接: {url}"
+                    result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
                     if password:
-                        result += f"\n密码: {password}"
+                        result += f"\n🔑 密码: {password}"
                     
                     yield event.plain_result(result)
                 else:
@@ -82,8 +83,8 @@ class MyPlugin(Star):
             # 如果用户没有待处理的搜索结果，则不处理数字消息
             pass
 
-    # 处理下一页指令
-    @filter.command("下一页")
+    # 处理下一页指令（不加斜杠）
+    @filter.regex(r"^下一页$")  
     async def next_page_handler(self, event: AstrMessageEvent):
         """处理下一页指令"""
         user_id = event.get_sender_id()
@@ -112,8 +113,8 @@ class MyPlugin(Star):
         else:
             yield event.plain_result("没有搜索结果可以翻页")
 
-    # 处理上一页指令
-    @filter.command("上一页")
+    # 处理上一页指令（不加斜杠）
+    @filter.regex(r"^上一页$")  
     async def prev_page_handler(self, event: AstrMessageEvent):
         """处理上一页指令"""
         user_id = event.get_sender_id()
@@ -291,7 +292,7 @@ class MyPlugin(Star):
         return grouped_results
 
     def format_paginated_results(self, user_id: str, all_results: list, pagination: dict) -> str:
-        """格式化分页结果"""
+        """格式化分页结果，按网盘类型分组展示"""
         page = pagination["page"]
         per_page = pagination["per_page"]
         
@@ -303,34 +304,45 @@ class MyPlugin(Star):
         page_results = all_results[start_index:end_index]
         
         # 格式化结果
-        formatted_results = [f"搜索结果 (第 {page} 页)："]
-        baidu_count = 0
-        quark_count = 0
+        formatted_results = [f"🔍 搜索结果 (第 {page} 页)："]
+        formatted_results.append("═" * 30)
         
-        # 统计当前页中各类型资源的数量
-        for item in page_results:
-            if item.get("type") == "baidu":
-                baidu_count += 1
-            elif item.get("type") == "quark":
-                quark_count += 1
-        
-        formatted_results.append(f"[百度网盘: {baidu_count}条, 夸克网盘: {quark_count}条]")
+        # 按类型分组展示
+        baidu_items = []
+        quark_items = []
         
         for i, item in enumerate(page_results, 1):
             title = item.get("note", "未知标题")
-            source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
-            formatted_results.append(f"{i}. {title} [{source}]")
+            if item.get("type") == "baidu":
+                baidu_items.append(f"{i}. {title}")
+            elif item.get("type") == "quark":
+                quark_items.append(f"{i}. {title}")
+        
+        # 展示百度网盘结果
+        if baidu_items:
+            formatted_results.append("🌐 百度网盘资源:")
+            formatted_results.append("─" * 20)
+            formatted_results.extend(baidu_items)
+            formatted_results.append("")
+        
+        # 展示夸克网盘结果
+        if quark_items:
+            formatted_results.append("🌐 夸克网盘资源:")
+            formatted_results.append("─" * 20)
+            formatted_results.extend(quark_items)
+        
+        formatted_results.append("═" * 30)
         
         # 添加分页信息和交互提示
         total_count = len(all_results)
         total_pages = (total_count + per_page - 1) // per_page
-        formatted_results.append(f"\n📊 共 {total_count} 条结果，当前第 {page}/{total_pages} 页")
-        formatted_results.append("输入编号查看详细信息（如：1）")
+        formatted_results.append(f"📈 共 {total_count} 条结果，当前第 {page}/{total_pages} 页")
+        formatted_results.append("📌 输入 '获取+编号' 查看详细信息（如：获取1）")
         
         if page > 1:
-            formatted_results.append("发送 /上一页 查看前一页")
+            formatted_results.append("⬅️  发送 '上一页' 查看前一页")
         if page < total_pages:
-            formatted_results.append("发送 /下一页 查看下一页")
+            formatted_results.append("➡️  发送 '下一页' 查看下一页")
         
         return "\n".join(formatted_results)
 
