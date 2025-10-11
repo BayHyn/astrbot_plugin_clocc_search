@@ -31,7 +31,7 @@ class MyPlugin(Star):
             keyword = match.group(1).strip()
             if keyword:
                 # 先发送正在搜索的提示消息
-                yield event.plain_result("正在搜索，请稍后...")
+                yield event.plain_result("🔍 正在搜索，请稍后... (๑•̀ω•́๑)✧")
                 
                 # 调用搜索接口
                 result = await self.search_resources(keyword, user_id)
@@ -72,8 +72,8 @@ class MyPlugin(Star):
                     
                     # 如果是百度网盘，先调用转换接口
                     if item.get("type") == "baidu":
-                        yield event.plain_result("正在转换百度网盘链接，请稍后...")
-                        converted_url, converted_password = await self.convert_baidu_link(url, password)
+                        yield event.plain_result("🔄 正在努力加载资源中，请稍后... (´∀｀)♡")
+                        converted_url, converted_password = await self.convert_baidu_link(url)
                         if converted_url:
                             url = converted_url
                             password = converted_password
@@ -193,7 +193,7 @@ class MyPlugin(Star):
             logger.error(f"搜索接口调用失败: {e}")
             return f"搜索失败: {e}"
 
-    async def convert_baidu_link(self, original_url: str, password: str) -> tuple:
+    async def convert_baidu_link(self, original_url: str) -> tuple:
         """转换百度网盘链接"""
         convert_url = "http://103.109.22.15:5003/api/key/transfer-and-share"
         api_key = "oPhbkFvdYnuKxMOCsei7gLHVSoQ5cnmj1MCSNiir35s"
@@ -203,10 +203,11 @@ class MyPlugin(Star):
             "Content-Type": "application/json"
         }
         
+        # 固定密码为1234
         data = {
             "share_url": original_url,
             "save_dir": "/pansou_downloads",
-            "share_password": password,
+            "share_password": "1234",
             "share_period": 0
         }
         
@@ -226,27 +227,27 @@ class MyPlugin(Star):
                         if result.get("success"):
                             share_info = result.get("share_info", {})
                             converted_url = share_info.get("url", original_url)
-                            converted_password = share_info.get("password", password)
+                            converted_password = share_info.get("password", "1234")
                             return converted_url, converted_password
                         else:
                             logger.error(f"转换失败: {result.get('message')}")
-                            return original_url, password
+                            return original_url, "1234"
                     else:
                         error_text = await response.text()
                         logger.error(f"转换接口请求失败，状态码: {response.status}, 响应内容: {error_text}")
-                        return original_url, password
+                        return original_url, "1234"
         except aiohttp.ClientConnectorError as e:
             logger.error(f"转换接口网络连接错误: {e}")
-            return original_url, password
+            return original_url, "1234"
         except aiohttp.ClientError as e:
             logger.error(f"转换接口HTTP客户端错误: {e}")
-            return original_url, password
+            return original_url, "1234"
         except json.JSONDecodeError as e:
             logger.error(f"转换接口JSON解析错误: {e}")
-            return original_url, password
+            return original_url, "1234"
         except Exception as e:
             logger.error(f"转换接口调用失败: {e}")
-            return original_url, password
+            return original_url, "1234"
 
     def format_search_results(self, data: dict, keyword: str, user_id: str) -> str:
         """格式化搜索结果"""
