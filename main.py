@@ -4,6 +4,7 @@ from astrbot.api import logger
 import aiohttp
 import json
 import re
+from typing import Optional, Tuple
 
 @register("clocc_search", "YourName", "CloCC资源搜索插件", "1.0.0")
 class MyPlugin(Star):
@@ -72,17 +73,25 @@ class MyPlugin(Star):
                     
                     # 如果是百度网盘，先调用转换接口
                     if item.get("type") == "baidu":
-                        yield event.plain_result("🔄 正在努力加载资源中，请稍后... (´∀｀)♡")
-                        converted_url, converted_password = await self.convert_baidu_link(url)
-                        if converted_url:
-                            url = converted_url
-                            password = converted_password
-                    
-                    result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
-                    if password:
-                        result += f"\n🔑 密码: {password}"
-                    
-                    yield event.plain_result(result)
+                        yield event.plain_result("🔄 正在获取资源，请稍后...预计需要10秒左右 (´∀｀)♡")
+                        converted_result = await self.convert_baidu_link(url)
+                        if converted_result:
+                            # 转换成功，使用新链接
+                            url = converted_result[0]
+                            password = converted_result[1]
+                            result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
+                            if password:
+                                result += f"\n🔑 密码: {password}"
+                            yield event.plain_result(result)
+                        else:
+                            # 转换失败，提示链接已失效
+                            yield event.plain_result("❌ 抱歉，该分享链接已失效，请尝试获取其他资源 (；′⌒`)")
+                    else:
+                        # 夸克网盘直接显示详情
+                        result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
+                        if password:
+                            result += f"\n🔑 密码: {password}"
+                        yield event.plain_result(result)
                 else:
                     yield event.plain_result(f"请输入有效的编号 (1-{min(per_page, len(search_results) - (current_page-1) * per_page)})")
             except ValueError:
@@ -193,7 +202,7 @@ class MyPlugin(Star):
             logger.error(f"搜索接口调用失败: {e}")
             return f"搜索失败: {e}"
 
-    async def convert_baidu_link(self, original_url: str) -> tuple:
+    async def convert_baidu_link(self, original_url: str) -> Optional[Tuple[str, str]]:
         """转换百度网盘链接"""
         convert_url = "http://103.109.22.15:5003/api/key/transfer-and-share"
         api_key = "oPhbkFvdYnuKxMOCsei7gLHVSoQ5cnmj1MCSNiir35s"
@@ -228,26 +237,26 @@ class MyPlugin(Star):
                             share_info = result.get("share_info", {})
                             converted_url = share_info.get("url", original_url)
                             converted_password = share_info.get("password", "1234")
-                            return converted_url, converted_password
+                            return (converted_url, converted_password)
                         else:
                             logger.error(f"转换失败: {result.get('message')}")
-                            return original_url, "1234"
+                            return None
                     else:
                         error_text = await response.text()
                         logger.error(f"转换接口请求失败，状态码: {response.status}, 响应内容: {error_text}")
-                        return original_url, "1234"
+                        return None
         except aiohttp.ClientConnectorError as e:
             logger.error(f"转换接口网络连接错误: {e}")
-            return original_url, "1234"
+            return None
         except aiohttp.ClientError as e:
             logger.error(f"转换接口HTTP客户端错误: {e}")
-            return original_url, "1234"
+            return None
         except json.JSONDecodeError as e:
             logger.error(f"转换接口JSON解析错误: {e}")
-            return original_url, "1234"
+            return None
         except Exception as e:
             logger.error(f"转换接口调用失败: {e}")
-            return original_url, "1234"
+            return None
 
     def format_search_results(self, data: dict, keyword: str, user_id: str) -> str:
         """格式化搜索结果"""
