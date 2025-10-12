@@ -14,7 +14,7 @@ class MyPlugin(Star):
         self.user_search_results = {}
         # 存储用户的分页信息
         self.user_pagination = {}
-        # 获取配置中的忽略关键词列表，默认忽略"搜小说"
+        # 获取配置中的忽略关键词列表，默认忽略"小说"
         config_ignored_keywords = context.get_config().get("ignored_keywords", [])
         self.ignored_keywords = config_ignored_keywords + ["小说"]
 
@@ -25,13 +25,12 @@ class MyPlugin(Star):
     
     # 搜索功能：当消息以"搜"开头时触发
     @filter.regex(r"^搜(.+)")  
-    async def search_handler(self, event: AstrMessageEvent):
+    async def search_handler(self, event: AstrMessageEvent, match):
         """搜索处理器"""
         message_str = event.get_message_str().strip()
         user_id = event.get_sender_id()
         
         # 使用正则表达式提取搜索关键字
-        match = re.match(r"^搜(.+)", message_str)
         if match:
             keyword = match.group(1).strip()
             if keyword:
@@ -53,13 +52,12 @@ class MyPlugin(Star):
 
     # 处理用户输入的编号（获取详细信息）
     @filter.regex(r"^获取(\d+)$")  
-    async def number_handler(self, event: AstrMessageEvent):
+    async def number_handler(self, event: AstrMessageEvent, match):
         """处理用户输入的编号"""
         message_str = event.get_message_str().strip()
         user_id = event.get_sender_id()
         
         # 使用正则表达式提取编号
-        match = re.match(r"^获取(\d+)$", message_str)
         if match:
             try:
                 index = int(match.group(1))
@@ -123,7 +121,7 @@ class MyPlugin(Star):
 
     # 处理下一页指令（不加斜杠）
     @filter.regex(r"^下一页$")  
-    async def next_page_handler(self, event: AstrMessageEvent):
+    async def next_page_handler(self, event: AstrMessageEvent, match):
         """处理下一页指令"""
         user_id = event.get_sender_id()
         
@@ -153,7 +151,7 @@ class MyPlugin(Star):
 
     # 处理上一页指令（不加斜杠）
     @filter.regex(r"^上一页$")  
-    async def prev_page_handler(self, event: AstrMessageEvent):
+    async def prev_page_handler(self, event: AstrMessageEvent, match):
         """处理上一页指令"""
         user_id = event.get_sender_id()
         
