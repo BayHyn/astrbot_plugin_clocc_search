@@ -14,8 +14,9 @@ class MyPlugin(Star):
         self.user_search_results = {}
         # 存储用户的分页信息
         self.user_pagination = {}
-        # 获取配置中的忽略关键词列表
-        self.ignored_keywords = context.get_config().get("ignored_keywords", [])
+        # 获取配置中的忽略关键词列表，默认忽略"搜小说"
+        config_ignored_keywords = context.get_config().get("ignored_keywords", [])
+        self.ignored_keywords = config_ignored_keywords + ["小说"]
 
     async def initialize(self):
         """插件初始化"""
