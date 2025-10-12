@@ -27,12 +27,11 @@
 ### 忽略关键词配置
 可以通过配置忽略某些关键词，避免与其他插件冲突。
 
-在 AstrBot 的配置文件中添加：
+插件默认忽略"小说"关键词，如需忽略其他关键词，可在 AstrBot 的配置文件中添加：
 ```yaml
 plugins:
   astrbot_plugin_clocc_search:
     ignored_keywords:
-      - "小说"
       - "电影"
       - "音乐"
 ```
