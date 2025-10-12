@@ -14,9 +14,12 @@ class MyPlugin(Star):
         self.user_search_results = {}
         # 存储用户的分页信息
         self.user_pagination = {}
+        # 获取配置中的忽略关键词列表
+        self.ignored_keywords = context.get_config().get("ignored_keywords", [])
 
     async def initialize(self):
         """插件初始化"""
+        logger.info(f"插件初始化，忽略关键词列表: {self.ignored_keywords}")
         pass
     
     # 搜索功能：当消息以"搜"开头时触发
@@ -31,6 +34,11 @@ class MyPlugin(Star):
         if match:
             keyword = match.group(1).strip()
             if keyword:
+                # 检查是否在忽略关键词列表中
+                if keyword in self.ignored_keywords:
+                    logger.info(f"关键词 '{keyword}' 在忽略列表中，不处理此消息")
+                    return
+                
                 # 先发送正在搜索的提示消息
                 yield event.plain_result("🔍 正在搜索，请稍后... (๑•̀ω•́๑)✧")
                 
