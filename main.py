@@ -5,6 +5,11 @@ import aiohttp
 import json
 import re
 from typing import Optional, Tuple
+import asyncio
+import requests
+import urllib.parse
+import time
+import uuid
 
 @register("clocc_search", "YourName", "CloCC资源搜索插件", "1.0.0")
 class MyPlugin(Star):
@@ -14,10 +19,109 @@ class MyPlugin(Star):
         self.user_search_results = {}
         # 存储用户的分页信息
         self.user_pagination = {}
-
+        # 用于存储正在进行异步转存的任务
+        self.pending_transfers = {}
+    
     async def initialize(self):
         """插件初始化"""
         pass
+    
+    def generate_share_link_by_path(self, folder_path: str) -> dict:
+        """
+        根据文件夹路径调用接口生成动态分享链接
+        
+        Args:
+            folder_path: 文件夹路径
+            
+        Returns:
+            包含分享链接信息的字典
+        """
+        # 调用接口生成分享链接
+        url = "http://103.109.22.15:5003/api/public/share/file"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        data = {
+            "file_path": folder_path,
+            "password": "1234",
+            "period": 0
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=30)
+            result = response.json()
+            
+            if result.get("success", False):
+                return {
+                    "success": True,
+                    "message": "分享链接生成成功",
+                    "share_info": {
+                        "url": result["share_info"]["url"],
+                        "password": result["share_info"]["password"],
+                        "period": result["share_info"]["period"]
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": result.get("message", "生成分享链接失败"),
+                    "share_info": None
+                }
+        except Exception as e:
+            logger.error(f"生成分享链接异常: {str(e)}")
+            return {
+                "success": False,
+                "message": f"生成分享链接异常: {str(e)}",
+                "share_info": None
+            }
+    
+    def generate_quark_share_link_by_path(self, folder_path: str) -> dict:
+        """
+        根据文件夹路径调用接口生成夸克网盘动态分享链接
+        
+        Args:
+            folder_path: 文件夹路径
+            
+        Returns:
+            包含分享链接信息的字典
+        """
+        # 调用接口生成分享链接
+        url = "http://103.109.22.15:5009/api/share_folder_by_path"
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": "77271a99412a1cde"
+        }
+        data = {
+            "folder_path": folder_path
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=30)
+            result = response.json()
+            
+            if result.get("success", False):
+                return {
+                    "success": True,
+                    "message": "分享链接生成成功",
+                    "share_info": {
+                        "url": result["data"]["share_link"],
+                        "passcode": result["data"]["passcode"],
+                        "folder_path": result["data"]["folder_path"]
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": result.get("message", "生成分享链接失败"),
+                    "share_info": None
+                }
+        except Exception as e:
+            logger.error(f"生成夸克网盘分享链接异常: {str(e)}")
+            return {
+                "success": False,
+                "message": f"生成分享链接异常: {str(e)}",
+                "share_info": None
+            }
     
     # 搜索功能：当消息以"搜"开头时触发
     @filter.regex(r"^搜(.+)")  
@@ -71,33 +175,71 @@ class MyPlugin(Star):
                     password = item.get("password", "")
                     source = "百度网盘" if item.get("type") == "baidu" else "夸克网盘"
                     
-                    # 如果是百度网盘，先调用转换接口
+                    # 如果是百度网盘，使用优化后的逻辑
                     if item.get("type") == "baidu":
                         yield event.plain_result("🔄 正在努力加载资源，请稍后... (´∀｀)♡")
-                        converted_result = await self.convert_baidu_link(url)
-                        if converted_result:
-                            # 转换成功，使用新链接
-                            url = converted_result[0]
-                            password = converted_result[1]
-                            result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
-                            if password:
-                                result += f"\n🔑 密码: {password}"
-                            yield event.plain_result(result)
-                        else:
-                            # 转换失败，提示链接已失效
-                            yield event.plain_result("❌ 抱歉，该分享链接已失效，请尝试获取其他资源 (；′⌒`)")
-                    # 如果是夸克网盘，调用夸克转换接口
+                        
+                        # 生成唯一的任务ID
+                        task_id = str(uuid.uuid4())
+                        
+                        # 生成安全的文件夹名称
+                        safe_title = "".join(c for c in title if c.isalnum() or c in "._- " or '\u4e00' <= c <= '\u9fff')
+                        safe_title = re.sub(r'\s+', '_', safe_title.strip())
+                        if not safe_title:
+                            safe_title = "未知资源"
+                        
+                        # 创建资源文件夹路径，使用资源标题命名
+                        folder_path = f"/pansou_downloads/{safe_title}"
+                        
+                        # 生成分享链接
+                        share_result = self.generate_share_link_by_path(folder_path)
+                        if not share_result["success"]:
+                            yield event.plain_result(f"❌ 生成分享链接失败: {share_result['message']}")
+                            return
+                        
+                        share_url = share_result["share_info"]["url"]
+                        share_password = share_result["share_info"]["password"]
+                        
+                        # 立即返回分享链接给用户
+                        result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {share_url}?pwd={share_password}\n💡 若链接未显示资源，先稍等几秒再重点击；超过 15 秒依旧空白，可能为链接被和谐，建议获取其他资源。"
+                        yield event.plain_result(result)
+                        
+                        # 异步执行转存任务
+                        asyncio.create_task(self.async_transfer_baidu_resource(task_id, url, folder_path))
+                    # 如果是夸克网盘，使用优化后的逻辑
                     elif item.get("type") == "quark":
                         yield event.plain_result("🔄 正在努力加载资源，请稍后... (´∀｀)♡")
-                        converted_url = await self.convert_quark_link(url)
-                        if converted_url:
-                            # 转换成功，使用新链接
-                            url = converted_url
-                            result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
-                            yield event.plain_result(result)
-                        else:
-                            # 转换失败，提示链接已失效
-                            yield event.plain_result("❌ 抱歉，该分享链接已失效，请尝试获取其他资源 (；′⌒`)")
+                        
+                        # 生成唯一的任务ID
+                        task_id = str(uuid.uuid4())
+                        
+                        # 生成安全的文件夹名称
+                        safe_title = "".join(c for c in title if c.isalnum() or c in "._- " or '\u4e00' <= c <= '\u9fff')
+                        safe_title = re.sub(r'\s+', '_', safe_title.strip())
+                        if not safe_title:
+                            safe_title = "未知资源"
+                        
+                        # 创建资源文件夹路径，使用资源标题命名
+                        folder_path = f"/pansou_downloads/{safe_title}"
+                        
+                        # 生成分享链接
+                        share_result = self.generate_quark_share_link_by_path(folder_path)
+                        if not share_result["success"]:
+                            yield event.plain_result(f"❌ 生成分享链接失败: {share_result['message']}")
+                            return
+                        
+                        share_url = share_result["share_info"]["url"]
+                        passcode = share_result["share_info"]["passcode"]
+                        
+                        # 立即返回分享链接给用户
+                        result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {share_url}"
+                        if passcode:
+                            result += f"\n🔑 提取码: {passcode}"
+                        result += f"\n💡 若链接未显示资源，先稍等几秒再重点击；超过 15 秒依旧空白，可能链接被和谐，建议获取其他资源。"
+                        yield event.plain_result(result)
+                        
+                        # 异步执行转存任务
+                        asyncio.create_task(self.async_transfer_quark_resource(task_id, url, folder_path))
                     else:
                         # 其他类型直接显示详情
                         result = f"🔍 资源详情:\n📖 标题: {title}\n🔗 来源: {source}\n🌐 链接: {url}"
@@ -170,7 +312,7 @@ class MyPlugin(Star):
 
     async def search_resources(self, keyword: str, user_id: str) -> str:
         """调用搜索接口并返回结果"""
-        url = f"https://pansd.xyz/api/search?kw={keyword}&src=all&cloud_types=baidu%2Cquark"
+        url = f"https://api.pansd.icu/api/search?kw={keyword}&src=all&cloud_types=baidu%2Cquark"
         
         # 准备请求参数
         params = {
@@ -272,7 +414,8 @@ class MyPlugin(Star):
 
     async def convert_quark_link(self, original_url: str) -> Optional[str]:
         """转换夸克网盘链接"""
-        convert_url = "https://pansd.xyz/api/quark-transfer-and-share"
+        convert_url = "https://quarknet.pansd.icu/api/auto_save_and_share"
+        api_key = "77271a99412a1cde"
         
         # 准备请求参数
         data = {
@@ -282,6 +425,7 @@ class MyPlugin(Star):
         
         headers = {
             "Content-Type": "application/json",
+            "X-API-Key": api_key,
             "User-Agent": "AstrBot-Search-Plugin/1.0"
         }
         
@@ -298,11 +442,11 @@ class MyPlugin(Star):
                         result = await response.json()
                         logger.info(f"夸克转换接口响应数据: {result}")
                         
-                        if result.get("code") == 200 and result.get("data", {}).get("success"):
+                        if result.get("success") and result.get("data", {}).get("share_link"):
                             converted_url = result.get("data", {}).get("share_link", original_url)
                             return converted_url
                         else:
-                            error_msg = result.get("data", {}).get("message", "转换失败")
+                            error_msg = result.get("message", "转换失败")
                             logger.error(f"夸克链接转换失败: {error_msg}")
                             return None
                     else:
@@ -328,16 +472,20 @@ class MyPlugin(Star):
             logger.info(f"开始格式化搜索结果: {data}")
             
             # 检查数据结构
-            if not data or "merged_by_type" not in data:
-                return "未找到相关资源。"
+            if not data or "data" not in data:
+                return "未找到相关资源，请更换关键词重新搜索，Tips：宁少写，不多写、错写。"
+            
+            search_data = data.get("data", {})
+            if "merged_by_type" not in search_data:
+                return "未找到相关资源，请更换关键词重新搜索，Tips：宁少写，不多写、错写。"
             
             # 分别获取百度网盘和夸克网盘的结果
-            merged_data = data.get("merged_by_type", {})
+            merged_data = search_data.get("merged_by_type", {})
             baidu_results = merged_data.get("baidu", [])
             quark_results = merged_data.get("quark", [])
             
             if not baidu_results and not quark_results:
-                return "未找到相关资源。"
+                return "未找到相关资源，请更换关键词重新搜索，Tips：宁少写，不多写、错写。"
             
             # 按照网盘类型分组展示（先5条百度，再5条夸克）
             all_results = self.group_results_by_type(baidu_results, quark_results)
@@ -442,7 +590,7 @@ class MyPlugin(Star):
         
         # 格式化结果
         formatted_results = [f"🔍 搜索结果 (第 {page} 页)："]
-        formatted_results.append("═" * 30)
+        formatted_results.append("═" * 17)
         
         # 按类型分组展示
         baidu_items = []
@@ -458,17 +606,17 @@ class MyPlugin(Star):
         # 展示百度网盘结果
         if baidu_items:
             formatted_results.append("🌐 百度网盘资源:")
-            formatted_results.append("─" * 20)
+            formatted_results.append("─" * 16)
             formatted_results.extend(baidu_items)
             formatted_results.append("")
         
         # 展示夸克网盘结果
         if quark_items:
             formatted_results.append("🌐 夸克网盘资源:")
-            formatted_results.append("─" * 20)
+            formatted_results.append("─" * 16)
             formatted_results.extend(quark_items)
         
-        formatted_results.append("═" * 30)
+        formatted_results.append("═" * 17)
         
         # 添加分页信息和交互提示
         total_count = len(all_results)
@@ -483,6 +631,122 @@ class MyPlugin(Star):
         
         return "\n".join(formatted_results)
 
+    async def async_transfer_baidu_resource(self, task_id: str, original_url: str, folder_path: str):
+        """
+        异步转存百度网盘资源到指定文件夹
+        
+        Args:
+            task_id: 任务ID
+            original_url: 原始百度网盘链接
+            folder_path: 目标文件夹路径
+        """
+        try:
+            # 标记任务为进行中
+            self.pending_transfers[task_id] = {
+                "status": "transferring",
+                "start_time": time.time()
+            }
+            
+            # 调用百度网盘转换接口
+            convert_url = "http://103.109.22.15:5003/api/key/transfer-and-share"
+            api_key = "oPhbkFvdYnuKxMOCsei7gLHVSoQ5cnmj1MCSNiir35s"
+            
+            headers = {
+                "X-API-Key": api_key,
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "share_url": original_url,
+                "save_dir": folder_path,
+                "share_password": "1234",
+                "share_period": 0
+            }
+            
+            # 发送转换请求
+            async with aiohttp.ClientSession() as session:
+                async with session.post(convert_url, headers=headers, json=data, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        
+                        if result.get("success"):
+                            # 转存成功
+                            self.pending_transfers[task_id]["status"] = "completed"
+                            self.pending_transfers[task_id]["end_time"] = time.time()
+                            logger.info(f"百度网盘资源转存成功: {original_url} -> {folder_path}")
+                        else:
+                            # 转存失败
+                            self.pending_transfers[task_id]["status"] = "failed"
+                            self.pending_transfers[task_id]["error"] = result.get("message", "转存失败")
+                            logger.error(f"百度网盘资源转存失败: {result.get('message')}")
+                    else:
+                        # HTTP错误
+                        self.pending_transfers[task_id]["status"] = "failed"
+                        self.pending_transfers[task_id]["error"] = f"HTTP {response.status}"
+                        logger.error(f"百度网盘转换接口请求失败，状态码: {response.status}")
+        except Exception as e:
+            # 异常处理
+            self.pending_transfers[task_id]["status"] = "failed"
+            self.pending_transfers[task_id]["error"] = str(e)
+            logger.error(f"百度网盘资源转存异常: {e}")
+    
+    async def async_transfer_quark_resource(self, task_id: str, original_url: str, folder_path: str):
+        """
+        异步转存夸克网盘资源到指定文件夹
+        
+        Args:
+            task_id: 任务ID
+            original_url: 原始夸克网盘链接
+            folder_path: 目标文件夹路径
+        """
+        try:
+            # 标记任务为进行中
+            self.pending_transfers[task_id] = {
+                "status": "transferring",
+                "start_time": time.time()
+            }
+            
+            # 调用夸克网盘转换接口
+            convert_url = "https://quarknet.pansd.icu/api/auto_save_and_share"
+            headers = {
+                "Content-Type": "application/json",
+                "X-API-Key": "77271a99412a1cde",
+                "User-Agent": "AstrBot-Search-Plugin/1.0"
+            }
+            
+            data = {
+                "share_url": original_url,
+                "target_dir": folder_path
+            }
+            
+            # 发送转换请求
+            async with aiohttp.ClientSession() as session:
+                async with session.post(convert_url, headers=headers, json=data, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        
+                        if result.get("success") and result.get("data", {}).get("share_link"):
+                            # 转存成功
+                            self.pending_transfers[task_id]["status"] = "completed"
+                            self.pending_transfers[task_id]["end_time"] = time.time()
+                            logger.info(f"夸克网盘资源转存成功: {original_url} -> {folder_path}")
+                        else:
+                            # 转存失败
+                            error_msg = result.get("message", "转存失败")
+                            self.pending_transfers[task_id]["status"] = "failed"
+                            self.pending_transfers[task_id]["error"] = error_msg
+                            logger.error(f"夸克网盘资源转存失败: {error_msg}")
+                    else:
+                        # HTTP错误
+                        self.pending_transfers[task_id]["status"] = "failed"
+                        self.pending_transfers[task_id]["error"] = f"HTTP {response.status}"
+                        logger.error(f"夸克网盘转换接口请求失败，状态码: {response.status}")
+        except Exception as e:
+            # 异常处理
+            self.pending_transfers[task_id]["status"] = "failed"
+            self.pending_transfers[task_id]["error"] = str(e)
+            logger.error(f"夸克网盘资源转存异常: {e}")
+    
     async def terminate(self):
         """插件销毁"""
         pass
